@@ -144,15 +144,13 @@ def predict(X, P, control, control_cov, k):
     x, y, theta = X[0], X[1], X[2]
 
     # Prediction of pose at time t+1 only with control input
-    X_pre = np.zeros((3 + 2*k, 1))
-    X_pre[0] = x + d_t * np.cos(theta)
-    X_pre[1] = y + d_t * np.sin(theta)
-    X_pre[2] = theta + alpha_t
+    X_input = np.zeros((3 + 2*k, 1))
+    X_input[0] = d_t * np.cos(theta)
+    X_input[1] = d_t * np.sin(theta)
+    X_input[2] = alpha_t
+    X_pre = X + X_input
 
     # Compute uncertainty matrix
-    # print(np.array([np.cos(p_t[2][0]), -np.sin(p_t[2][0]), 0]).shape)
-    # print(np.array([0,0,1]).shape)
-    # exit()
     B = np.array([[np.cos(theta), -np.sin(theta), 0],
                 [np.sin(theta),  np.cos(theta), 0],
                 [0,0,1]])
@@ -164,7 +162,7 @@ def predict(X, P, control, control_cov, k):
                    [0, 0, 1]])
     P_pre = P
     P_pre[:3,:3] = G @ P[:3,:3] @ G.T + R
-
+    # print(X_pre)
 
     return X_pre, P_pre
 
@@ -186,7 +184,7 @@ def update(X_pre, P_pre, measure, measure_cov, k):
     Pm = np.zeros((2*k, 1))          # Predict the measurement of bearing and range
     H = np.zeros((2*k, 3+2*k))       # Measurement Jacobian
     R = np.zeros((2*k, 2*k))
-
+    # print("Input: ", X_pre)
     for i in range(k):
         dx = X_pre[3 + 2*i] - X_pre[0]          # lx - x
         dy = X_pre[3 + 2*i + 1] - X_pre[1]      # ly - y
@@ -212,6 +210,9 @@ def update(X_pre, P_pre, measure, measure_cov, k):
     
     # Kalman Gain
     K = P_pre @ H.T @ np.linalg.inv(H @ P_pre @ H.T + R)
+    # print("measure: ", measure)
+    # print("pose: ", Pm)
+    # print("Gain: ", K)
     X = X + K @ (measure - Pm)
     P = (np.eye(3+2*k) - K @ H) @ P_pre
 
@@ -236,12 +237,20 @@ def evaluate(X, P, k):
     # Compute Euclidean distance
     x_true = l_true.reshape(-1, 2)
     x_est = X[3:].reshape(-1, 2)
-    euclidean_dist = np.linalg.norm(x_true - x_est)
-    print(f'Euclidean distance: {euclidean_dist:.3f}')
+    euclidean_dist = np.linalg.norm(x_true - x_est, axis=1)
+    for i in range(k):
+        print(f'Euclidean distance for landmark {i+1}: {euclidean_dist[i]}')
 
-    # Compute Mahalanobis distance
-    mahalanobis_dist = np.sqrt((x_true - x_est).T @ np.linalg.inv(P[3:, 3:]) @ (x_true - x_est))
-    print(f'Mahalanobis distance: {mahalanobis_dist:.3f}')
+    # Compute Mahalanobis distance for each landmark
+    mahalanobis_dist = np.zeros(k)
+    # mahalanobis_dist_test = np.zeros(k)
+    for i in range(k):
+        P_landmark = P[3 + 2*i:3 + 2*i+2, 3 + 2*i:3 + 2*i+2]
+        mahalanobis_dist[i] = np.sqrt((x_true[i] - x_est[i]).T @ np.linalg.inv(P_landmark) @ (x_true[i] - x_est[i]))
+        
+        # mahalanobis_dist[i] = np.sqrt((x_true[i] - x_est[i]) @ (P_landmark) @ (x_true[i] - x_est[i]).T)
+        # print(mahalanobis_dist[i] - mahalanobis_dist_test[i])
+        print(f'Mahalanobis distance for landmark {i+1}: {mahalanobis_dist[i]}')
 
 
 def main():
