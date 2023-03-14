@@ -46,7 +46,7 @@ def draw_traj_and_pred(X, P):
     """
     draw_cov_ellipse(X[0:2], P[0:2, 0:2], 'm')
     plt.draw()
-    plt.waitforbuttonpress(0)
+    # plt.waitforbuttonpress(0)
 
 
 def draw_traj_and_map(X, last_X, P, t):
@@ -76,7 +76,7 @@ def draw_traj_and_map(X, last_X, P, t):
                                               3 + 2 * k:3 + 2 * k + 2], 'g')
 
     plt.draw()
-    plt.waitforbuttonpress(0)
+    # plt.waitforbuttonpress(0)
 
 
 def warp2pi(angle_rad):
@@ -247,14 +247,17 @@ def evaluate(X, P, k):
     for i in range(k):
         P_landmark = P[3 + 2*i:3 + 2*i+2, 3 + 2*i:3 + 2*i+2]
         mahalanobis_dist[i] = np.sqrt((x_true[i] - x_est[i]).T @ np.linalg.inv(P_landmark) @ (x_true[i] - x_est[i]))
-        
-        # mahalanobis_dist[i] = np.sqrt((x_true[i] - x_est[i]) @ (P_landmark) @ (x_true[i] - x_est[i]).T)
-        # print(mahalanobis_dist[i] - mahalanobis_dist_test[i])
         print(f'Mahalanobis distance for landmark {i+1}: {mahalanobis_dist[i]}')
 
 
 def main():
     # TEST: Setup uncertainty parameters
+    # sig_x = 0.25
+    # sig_y = 0.1
+    # sig_alpha = 0.1
+    # sig_beta = 0.01
+    # sig_r = 0.08
+
     sig_x = 0.25
     sig_y = 0.1
     sig_alpha = 0.1

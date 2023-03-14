@@ -79,6 +79,22 @@ def draw_traj_and_map(X, last_X, P, t):
     plt.waitforbuttonpress(0)
 
 
+# def warp2pi(angle_rad):
+#     """
+#     TODO: warps an angle in [-pi, pi]. Used in the update step.
+
+#     \param angle_rad Input angle in radius
+#     \return angle_rad_warped Warped angle to [-\pi, \pi].
+#     """
+
+#     while angle_rad > np.pi:
+#         angle_rad -= 2*np.pi
+
+#     while angle_rad < -np.pi:
+#         angle_rad += 2*np.pi
+        
+#     return angle_rad
+
 def warp2pi(angle_rad):
     """
     TODO: warps an angle in [-pi, pi]. Used in the update step.
@@ -86,15 +102,46 @@ def warp2pi(angle_rad):
     \param angle_rad Input angle in radius
     \return angle_rad_warped Warped angle to [-\pi, \pi].
     """
-
-    while angle_rad > np.pi:
-        angle_rad -= 2*np.pi
-
-    while angle_rad < -np.pi:
-        angle_rad += 2*np.pi
-        
+    angle_rad = angle_rad % (2 * np.pi)  # restrict angle to [0, 2pi)
+    if (angle_rad > np.pi):
+        angle_rad -= 2 * np.pi
     return angle_rad
 
+
+# def init_landmarks(init_measure, init_measure_cov, init_pose, init_pose_cov):
+#     '''
+#     TODO: initialize landmarks given the initial poses and measurements with their covariances
+#     \param init_measure Initial measurements in the form of (beta0, l0, beta1, l1, ...).
+#     \param init_measure_cov Initial covariance matrix of shape (2, 2) per landmark given parameters.
+#     \param init_pose Initial pose vector of shape (3, 1).
+#     \param init_pose_cov Initial pose covariance of shape (3, 3) given parameters.
+
+#     \return k Number of landmarks.
+#     \return landmarks Numpy array of shape (2k, 1) for the state.
+#     \return landmarks_cov Numpy array of shape (2k, 2k) for the uncertainty.
+#     '''
+
+#     k = init_measure.shape[0] // 2
+
+#     landmark = np.zeros((2 * k, 1))
+#     landmark_cov = np.zeros((2 * k, 2 * k))
+
+#     x_ini,y_ini,theta_ini = init_pose
+#     beta_ini =  init_measure[np.arange(0,2*k-1,2)]
+#     r_ini = init_measure[np.arange(1,2*k,2)]
+    
+#     i=0
+#     for beta, r in zip(beta_ini, r_ini):
+#         landmark[i] = x_ini + r * np.cos(theta_ini+beta)
+#         landmark[i+1] = y_ini + r * np.sin(theta_ini+beta)
+
+#         Ht = np.array([[-r*np.sin(beta+theta_ini), np.cos(beta+theta_ini)],
+#                        [r*np.cos(beta+theta_ini), np.sin(beta+theta_ini)]])
+#         Ht = Ht[:,:,0]
+#         landmark_cov[i:i+2, i:i+2] = Ht @ init_measure_cov @ Ht.T
+#         i += 2
+        
+#     return k, landmark, landmark_cov
 
 def init_landmarks(init_measure, init_measure_cov, init_pose, init_pose_cov):
     '''
@@ -113,23 +160,24 @@ def init_landmarks(init_measure, init_measure_cov, init_pose, init_pose_cov):
 
     landmark = np.zeros((2 * k, 1))
     landmark_cov = np.zeros((2 * k, 2 * k))
-
-    x_ini,y_ini,theta_ini = init_pose
-    beta_ini =  init_measure[np.arange(0,2*k-1,2)]
-    r_ini = init_measure[np.arange(1,2*k,2)]
     
-    i=0
-    for beta, r in zip(beta_ini, r_ini):
-        landmark[i] = x_ini + r * np.cos(theta_ini+beta)
-        landmark[i+1] = y_ini + r * np.sin(theta_ini+beta)
+    for i in range(k):
+        beta = init_measure[2*i]
+        r = init_measure[2*i + 1]
+        # Get landmark state in world frame
+        landmark[2*i] = init_pose[0] + r * np.cos(init_pose[2] + beta)
+        landmark[2*i+1] = init_pose[1] + r * np.sin(init_pose[2] + beta)
 
-        Ht = np.array([[-r*np.sin(beta+theta_ini), np.cos(beta+theta_ini)],
-                       [r*np.cos(beta+theta_ini), np.sin(beta+theta_ini)]])
-        Ht = Ht[:,:,0]
-        landmark_cov[i:i+2, i:i+2] = Ht @ init_measure_cov @ Ht.T
-        i += 2
-        
+        # Update covraince
+        H = np.array([[-r * np.sin(init_pose[2] + beta), np.cos(init_pose[2] + beta)],
+                       [r * np.cos(init_pose[2] + beta), np.sin(init_pose[2] + beta)]])
+        H = H[:, :, 0]
+        landmark_cov[2*i : 2*i+2, 2*i : 2*i+2] = H @ init_measure_cov @ H.T
+
+
     return k, landmark, landmark_cov
+
+
 
 
 def predict(X, P, control, control_cov, k):
@@ -161,6 +209,7 @@ def predict(X, P, control, control_cov, k):
                    [0,1,dt*np.cos(theta_t)],
                    [0,0,1]])
     P_pre[:3,:3] = Gt @ P[:3,:3] @ Gt.T + Ut @ control_cov @ Ut.T
+    print(X_pre)
 
     return X_pre, P_pre
 
@@ -180,9 +229,11 @@ def update(X_pre, P_pre, measure, measure_cov, k):
     Ht = np.zeros((2*k, 3+2*k))
     Qt = np.zeros((2*k, 2*k))
     hu = np.zeros((2*k, 1))
-
+    # print("Input: ", X_pre)
     for i in range(k):
         delta_x,delta_y = X_pre[3+i*2:3+i*2+2] - X_pre[0:2]
+        # print("dx: ", delta_x)
+        # print("dy: ", delta_y)
         qxy = np.sqrt(delta_x**2+delta_y**2)
         Ht_p = np.array([[ delta_y/(qxy**2), -delta_x/(qxy**2), -1],
                          [-delta_x/qxy,-delta_y/qxy,0]])
@@ -193,10 +244,18 @@ def update(X_pre, P_pre, measure, measure_cov, k):
         Qt[i*2:i*2+2,i*2:i*2+2] = measure_cov
         hu[i*2] = warp2pi(np.arctan2(delta_y,delta_x)-X_pre[2])
         hu[i*2+1] = qxy
+        # print("pm: ", hu[i*2], " ", hu[i*2+1])
 
     Kt = P_pre @ Ht.T @ np.linalg.inv( Ht @ P_pre @ Ht.T + Qt)
+    # print("measure: ", measure)
+    # print("pose: ", hu)
+    # print("Gain: ", Kt)
+
     X_update = X_pre + Kt @ (measure - hu)
     P_update = (np.eye(3+2*k) - Kt @ Ht) @ P_pre
+
+    # print("X: ", X_update)
+    # print("P: ", P_update)
 
     return X_update, P_update
 
