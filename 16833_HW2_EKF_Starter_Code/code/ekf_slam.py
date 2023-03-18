@@ -46,7 +46,7 @@ def draw_traj_and_pred(X, P):
     """
     draw_cov_ellipse(X[0:2], P[0:2, 0:2], 'm')
     plt.draw()
-    # plt.waitforbuttonpress(0)
+    plt.waitforbuttonpress(0)
 
 
 def draw_traj_and_map(X, last_X, P, t):
@@ -76,7 +76,7 @@ def draw_traj_and_map(X, last_X, P, t):
                                               3 + 2 * k:3 + 2 * k + 2], 'g')
 
     plt.draw()
-    # plt.waitforbuttonpress(0)
+    plt.waitforbuttonpress(0)
 
 
 def warp2pi(angle_rad):
