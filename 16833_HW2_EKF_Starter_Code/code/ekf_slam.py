@@ -104,7 +104,7 @@ def init_landmarks(init_measure, init_measure_cov, init_pose, init_pose_cov):
     \return landmarks Numpy array of shape (2k, 1) for the state.
     \return landmarks_cov Numpy array of shape (2k, 2k) for the uncertainty.
     '''
-
+    # print(init_measure)
     k = init_measure.shape[0] // 2
 
     landmark = np.zeros((2 * k, 1))
@@ -116,13 +116,27 @@ def init_landmarks(init_measure, init_measure_cov, init_pose, init_pose_cov):
         # Get landmark state in world frame
         landmark[2*i] = init_pose[0] + r * np.cos(init_pose[2] + beta)
         landmark[2*i+1] = init_pose[1] + r * np.sin(init_pose[2] + beta)
+        theta = init_pose[2][0]
+        r = r[0]
+        beta = beta[0]
 
         # Update covraince
-        H = np.array([[-r * np.sin(init_pose[2] + beta), np.cos(init_pose[2] + beta)],
-                       [r * np.cos(init_pose[2] + beta), np.sin(init_pose[2] + beta)]])
-        H = H[:, :, 0]
-        landmark_cov[2*i : 2*i+2, 2*i : 2*i+2] = H @ init_measure_cov @ H.T
-
+        # H = np.array([[-r * np.sin(init_pose[2] + beta), np.cos(init_pose[2] + beta)],
+        #                [r * np.cos(init_pose[2] + beta), np.sin(init_pose[2] + beta)]])
+        # H = H[:, :, 0]
+        # print(init_pose)
+        # print(init_pose[2])
+        # print(theta)
+        # print(beta)
+        # print(r)
+        # print(-r * np.sin(theta + beta))
+        J = np.array([[1, 0, -r * np.sin(theta + beta), -r * np.sin(theta + beta), np.cos(theta + beta)],
+                      [0, 1, r * np.cos(theta + beta), r * np.cos(theta + beta), np.sin(theta + beta)]])
+        
+        # landmark_cov[2*i : 2*i+2, 2*i : 2*i+2] = H @ init_measure_cov @ H.T
+        landmark_cov[2*i : 2*i+2, 2*i : 2*i+2] = J @ \
+            (np.block([[init_pose_cov, np.zeros((3, 2 ))], [np.zeros((2, 3)), init_measure_cov]]) )\
+            @ J.T
 
     return k, landmark, landmark_cov
 
@@ -139,9 +153,13 @@ def predict(X, P, control, control_cov, k):
     \return X_pre Predicted X state of shape (3 + 2k, 1).
     \return P_pre Predicted P covariance of shape (3 + 2k, 3 + 2k).
     '''
-    d_t, alpha_t = control
+    
     # p_t = X[: 3]    # x_t, y_t, theta_t
     x, y, theta = X[0], X[1], X[2]
+    theta = theta[0]
+    d_t, alpha_t = control
+    d_t = d_t[0]
+    alpha_t  = alpha_t[0]
 
     # Prediction of pose at time t+1 only with control input
     X_input = np.zeros((3 + 2*k, 1))
@@ -150,20 +168,25 @@ def predict(X, P, control, control_cov, k):
     X_input[2] = alpha_t
     X_pre = X + X_input
 
-    # Compute uncertainty matrix
-    B = np.array([[np.cos(theta), -np.sin(theta), 0],
-                [np.sin(theta),  np.cos(theta), 0],
-                [0,0,1]])
-    
-    R = B @ control_cov @ B.T
+    d_t, alpha_t = control
+    d_t = d_t[0]
+    alpha_t  = alpha_t[0]
 
-    G = np.array([[1, 0, -d_t * np.sin(theta)],
+
+    B = np.array([[np.cos(theta), -np.sin(theta), 0],
+                   [np.sin(theta), np.cos(theta), 0], 
+                   [0, 0, 1]])
+    R = np.zeros((3 + 2*k, 3 + 2*k))
+    R[0:3 , 0:3] = B @ control_cov @ B.T
+
+    G = np.eye(3 + 2*k)
+    G[0:3, 0:3] = np.array([[1, 0, -d_t * np.sin(theta)],
                    [0, 1, d_t * np.cos(theta)],
                    [0, 0, 1]])
-    P_pre = P
-    P_pre[:3,:3] = G @ P[:3,:3] @ G.T + R
-    # print(X_pre)
+    
+    P_pre = G @ P @ G.T + R
 
+    
     return X_pre, P_pre
 
 
@@ -188,6 +211,8 @@ def update(X_pre, P_pre, measure, measure_cov, k):
     for i in range(k):
         dx = X_pre[3 + 2*i] - X_pre[0]          # lx - x
         dy = X_pre[3 + 2*i + 1] - X_pre[1]      # ly - y
+        dx = dx[0]
+        dy = dy[0]
         eta = dx**2 + dy**2
         eta_sqrt = np.sqrt(eta)
 
@@ -206,7 +231,7 @@ def update(X_pre, P_pre, measure, measure_cov, k):
         # Jacobian to landmark
         Hl = np.array([[-dy/eta, dx/eta],
                        [dx/eta_sqrt, dy/eta_sqrt]])
-        H[i*2 : i*2+2, 3+i*2 : 3+i*2+2] = Hl[:, :, 0]
+        H[i*2 : i*2+2, 3+i*2 : 3+i*2+2] = Hl[:, :]
     
     # Kalman Gain
     K = P_pre @ H.T @ np.linalg.inv(H @ P_pre @ H.T + R)
@@ -247,6 +272,7 @@ def evaluate(X, P, k):
     for i in range(k):
         P_landmark = P[3 + 2*i:3 + 2*i+2, 3 + 2*i:3 + 2*i+2]
         mahalanobis_dist[i] = np.sqrt((x_true[i] - x_est[i]).T @ np.linalg.inv(P_landmark) @ (x_true[i] - x_est[i]))
+
         print(f'Mahalanobis distance for landmark {i+1}: {mahalanobis_dist[i]}')
 
 
@@ -332,6 +358,7 @@ def main():
             draw_traj_and_map(X, last_X, P, t)
             last_X = X
             t += 1
+            # print(P)
 
     # EVAL: Plot ground truth landmarks and analyze distances
     evaluate(X, P, k)
