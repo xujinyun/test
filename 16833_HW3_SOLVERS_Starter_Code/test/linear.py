@@ -40,29 +40,25 @@ def create_linear_system(odoms, observations, sigma_odom, sigma_observation,
     sqrt_inv_odom = np.linalg.inv(scipy.linalg.sqrtm(sigma_odom))
     sqrt_inv_obs = np.linalg.inv(scipy.linalg.sqrtm(sigma_observation))
 
-    # TODO: First fill in the prior to anchor the 1st pose at (0, 0)
-    # add a prior to the first robot pose
-    A[0, 0] = 1
-    A[1, 1] = 1
-
     # Prepare Jacobians
-    Ho = np.array([[-1,0,1,0],[0,-1,0,1]]) # Odometry measurement Jacobian
-    Hl = np.array([[-1,0,1,0],[0,-1,0,1]]) # Landmark measurement Jacobian
+    Ho = np.array([[-1,0,1,0],[0,-1,0,1]]) #odometry measurement
+    Hl = np.array([[-1,0,1,0],[0,-1,0,1]]) #landmark measurement
 
+    # TODO: First fill in the prior to anchor the 1st pose at (0, 0)
+    A[:2,:2] = np.eye(2)
+    
     # TODO: Then fill in odometry measurements
     for i in range(n_odom):
         A[2+2*i:2+2*i+2, 2*i:2*i+4] = sqrt_inv_odom @ Ho
-        b[2+2*i:2+2*i+2] = sqrt_inv_odom @ odoms[i]
-        # print(b[2+2*i:2+2*i+2])
-        # exit()
-
+        b[2+2*i:2+2*i+2] = (sqrt_inv_odom @ odoms[i][:,None]).squeeze()
+        
     # TODO: Then fill in landmark measurements
-    for k in range(n_obs):
-        i = observations[k,0].astype(int)
-        j = observations[k,1].astype(int)
-        A[2+2*n_odom+2*k:2+2*n_odom+2*k+2, 2*i:2*i+2] = sqrt_inv_obs @ Hl[:,0:2]
-        A[2+2*n_odom+2*k:2+2*n_odom+2*k+2, 2*j+n_poses*2:2*j+n_poses*2+2] = sqrt_inv_obs @ Hl[:,2:4]
-        b[2+2*n_odom+2*k:2+2*n_odom+2*k+2] = sqrt_inv_obs @ observations[k,2:4]
+    idx_rowobs = (n_odom +1)*2
+    for idx in range(n_obs):
+        i,j = observations[idx,:2].astype(int) #pose i and landmark j
+        A[idx_rowobs+2*idx : idx_rowobs+2*idx+2, 2*i:2*i+2] = sqrt_inv_obs @ Hl[:,:2]
+        A[idx_rowobs+2*idx : idx_rowobs+2*idx+2, 2*(n_poses+j):2*(n_poses+j)+2] = sqrt_inv_obs @ Hl[:,2:]
+        b[idx_rowobs+2*idx : idx_rowobs+2*idx+2] = (sqrt_inv_obs @ observations[idx,2:][:,None]).squeeze()
 
     return csr_matrix(A), b
 
@@ -73,7 +69,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--method',
         nargs='+',
-        choices=['default', 'pinv', 'qr', 'lu', 'qr_colamd', 'lu_colamd', 'my_splu'],
+        choices=['default', 'pinv', 'qr', 'lu', 'qr_colamd', 'lu_colamd'],
         default=['default'],
         help='method')
     parser.add_argument(
